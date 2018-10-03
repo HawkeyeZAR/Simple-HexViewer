@@ -6,7 +6,7 @@
 
 This is a very simple but handy Hex Viewer written in Python.
 It can open large exe files, just takes a few seconds to load. 
-It might seem as python is not responding but it is just busy loading the data.
+It might seem as python is not responding, but it's just busy loading the data.
 ----------
 
 
