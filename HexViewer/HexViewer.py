@@ -39,6 +39,9 @@ class HexViewer(Frame):
         self.grid(column=0, row=0, sticky='nsew',  padx=12,  pady=10)
         self.to_hex = ToHex()
 
+        # Stores all found 'self.find_string' matches
+        self.idx_list = []
+
         # Create Textbox to store hex data
         self.hex_textbox = Text(self, borderwidth=1, relief='sunken')
         self.hex_textbox.config(height=30, width=80)
@@ -62,12 +65,16 @@ class HexViewer(Frame):
         self.exit_btn.grid(column=0, row=1, sticky='E', pady=7)
         self.find_btn = ttk.Button(self, text='Find', command=self.find_text)
         self.find_btn.grid(column=0, row=2, sticky='E')
+        self.next_btn = ttk.Button(self, text='->', command=self.find_next)
+        self.next_btn.config(width=2, state='disabled')
+        self.next_btn.grid(column=1, row=2, sticky='E')
 
         # Create Entry Widget
         self.find_string = StringVar()
         self.find_entry = ttk.Entry(self, width=90)
         self.find_entry.config(textvariable=self.find_string)
         self.find_entry.grid(column=0, row=2, sticky='W')
+        #self.find_entry.bind("<Return>", lambda _: self.find_text)
         self.file_name_string = StringVar()
         self.file_name_entry = ttk.Entry(self, width=110, state='readonly')
         self.file_name_entry.config(textvariable=self.file_name_string)
@@ -89,10 +96,12 @@ class HexViewer(Frame):
         data = self.hex_textbox.search(self.find_string.get(), '1.0', "end")
         self.hex_textbox.see(data)
         '''
-        self.hex_textbox.tag_remove('found', '1.0', END)
+        self.hex_textbox.tag_remove('found', '1.0', END)  #  Delete any old tags
+        self.hex_textbox.tag_remove('found_next', '1.0', END)  #  Delete any old tags
         # Grabs the text from the entry box
         search = self.find_string.get()
         counter = 0
+        self.idx_list.clear()
         if search:
             idx = '1.0'
             while 1:
@@ -103,17 +112,46 @@ class HexViewer(Frame):
                 lastidx = '%s+%dc' % (idx, len(search))
                 self.hex_textbox.tag_add('found', idx, lastidx)
                 idx = lastidx
-                # Once found, the scrollbar automatically scrolls to the text
-                self.hex_textbox.see(idx)
+                self.idx_list.append(idx)
+                #self.hex_textbox.see(idx)
             self.hex_textbox.tag_config('found', foreground='darkred',
                                         background='yellow')
+            # If more than one result is found, enable find next button
+            if counter > 1:
+                self.next_btn.config(state='enabled')
+            else:
+                self.next_btn.config(state='disabled')
+                
         self.hex_textbox.focus_set()
-        # if not search string entered, don't create messagebox
+        # if no search string entered, don't create messagebox
         if self.find_string.get() != "":
             message = "{0} matches were found and highlighted".format(counter)
             messagebox.showinfo("Matches Found", message)
+        else:
+            self.next_btn.config(state='disabled')
 
+    # Find Text Callback
+    def find_next(self):
+        '''
+        Loops through all found matches, one at a time, if more than one match.
 
+        This allows you to jump to the next item, without having to scroll to it.
+        '''
+        search = self.find_string.get()
+        search_len = len(search)
+        self.hex_textbox.tag_remove('found_next', '1.0', END)  #  Delete any old tags
+        lst = iter(self.idx_list)  # Make the list iterable
+        #first_item = self.hex_textbox.see(next(lst))  # asign the first item in list to first_item
+        index = str(next(lst)).split('+')  # split tag location to get start index of tag location
+        start_index = index[0]
+        #  Calculate the end index by using length of search string
+        end_index = float(start_index) + float('0.{0}'.format(search_len))
+        # Add new tag to highlight first_item
+        self.hex_textbox.tag_add('found_next', start_index, end_index)
+        self.hex_textbox.tag_config('found_next', foreground='darkred', background='green')
+        self.hex_textbox.see(start_index)
+        self.idx_list = self.idx_list[1:] + self.idx_list[:1]
+    
     # Load a file callback
     def open_file(self):
         '''
@@ -126,31 +164,33 @@ class HexViewer(Frame):
         the data. This functions is in a seperate class in its own module.
         '''
         try:
+            self.hex_textbox.delete('1.0', END)  # make sure text box is clear
             file_type = [("All Files","*.*")]
             title_text = "---- Please select the file to edit ----"
             file_name = filedialog.askopenfilename(filetypes=file_type,
                                                    title=title_text)
-        except:
+        except (FileNotFoundError) as e:
             messagebox.showerror("File Error", "File could not be opened")
         else:
-            # Update self.file_name_string stringvar with filename
-            self.file_name_string.set(file_name)
-            # Create header index for hex data and insert it as first line
-            header_space = "########:  "
-            header_data = "00-01-02-03-04-05-06-07-08-09-0A-0B-0C-0D-0E-0F\n"
-            header_sep = ("--" * 28 + '--\n')
-            heder_row = header_space + header_data
-            self.hex_textbox.insert(tk.END, heder_row, "header")
-            self.hex_textbox.insert(tk.END, header_sep, "header")
+            if file_name != '':
+                # Update self.file_name_string stringvar with filename
+                self.file_name_string.set(file_name)
+                # Create header index for hex data and insert it as first line
+                header_space = "########:  "
+                header_data = "00-01-02-03-04-05-06-07-08-09-0A-0B-0C-0D-0E-0F\n"
+                header_sep = ("--" * 28 + '--\n')
+                heder_row = header_space + header_data
+                self.hex_textbox.insert(tk.END, heder_row, "header")
+                self.hex_textbox.insert(tk.END, header_sep, "header")
 
-            # Call the convert_to_hex() function, data is saved as a dictionery
-            # Data is returned as dictionery, sort dictionery before loop
-            get_data = self.to_hex.convert_to_hex(file_name)
-            for key, value in sorted(get_data.items()):
-                # After each loop, update textbox with the hex data
-                self.hex_textbox.insert(tk.END, key, "offset")
-                self.hex_textbox.insert(tk.END, ' ' + value[0] + '  ', "hex")
-                self.hex_textbox.insert(tk.END, ' ' + value[1] + '\n', "ascii")
+                # Call the convert_to_hex() function, data is saved as a dictionery
+                # Data is returned as dictionery, sort dictionery before loop
+                get_data = self.to_hex.convert_to_hex(file_name)
+                for key, value in sorted(get_data.items()):
+                    # After each loop, update textbox with the hex data
+                    self.hex_textbox.insert(tk.END, key, "offset")
+                    self.hex_textbox.insert(tk.END, ' ' + value[0] + '  ', "hex")
+                    self.hex_textbox.insert(tk.END, ' ' + value[1] + '\n', "ascii")
 
     # Create Popup menu widget
     def create_right_click_menu(self):
@@ -163,7 +203,7 @@ class HexViewer(Frame):
         # Bind the popup menus and Enter Key to the appropriate widgets.
         self.find_entry.bind("<Button-3>", self.popup.entry_popup)
         self.hex_textbox.bind("<Button-3>", self.popup2.text_popup)
-        self.find_entry.bind("<Return>", lambda _: self.find_string())
+
 
     # Exit the program. Linked to the Exit Button
     def on_exit(self):
